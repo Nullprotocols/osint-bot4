@@ -64,7 +64,9 @@ COMMANDS = {
         "param": "10-digit number",
         "log": LOG_CHANNELS["num"],
         "desc": "Phone number basic lookup",
-        "extra_blacklist": []
+        "extra_blacklist": [
+            "Ruk ja bhencho itne m kya unlimited request lega?? Paid lena h to bolo 100-400₹ @Simpleguy444."
+        ]
     },
     "tg2num": {
         "url": "https://tg2num-owner-api.vercel.app/?userid={}",
@@ -106,7 +108,13 @@ COMMANDS = {
         "param": "uid",
         "log": LOG_CHANNELS["ffinfo"],
         "desc": "Free Fire basic player info",
-        "extra_blacklist": []
+        "extra_blacklist": [
+            "developer",
+            "AnkuCode",
+            "TryByte || Ankucode",
+            "channel",
+            "TryByte"
+        ]
     },
     "ffban": {
         "url": "https://abbas-apis.vercel.app/api/ff-ban?uid={}",
