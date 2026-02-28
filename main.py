@@ -243,7 +243,7 @@ async def handle_command(update: Update, context: ContextTypes.DEFAULT_TYPE, cmd
     cleaned = clean_branding(json_str, cmd_info.get("extra_blacklist", []))
     cleaned_escaped = html.escape(cleaned)
 
-    extra_footer = "\n\n━━━━━━━━━━━━━━━━━━━━\n👨‍💻 **Developer:** @Nullprotocol_X\n⚡ **Powered by:** NULL PROTOCOL"
+    extra_footer = "\n\n━━━━━━━━━━━━━━━━━━━━\n👨‍💻 *Developer:* @Nullprotocol_X\n⚡ *Powered by:* NULL PROTOCOL"
 
     # Prepare final HTML message
     output_html = f"<pre>{cleaned_escaped}</pre>{extra_footer}"
@@ -277,8 +277,8 @@ async def handle_command(update: Update, context: ContextTypes.DEFAULT_TYPE, cmd
             # 2. Send same file to log channel with user info in caption
             if log_channel_id:
                 user_info_caption = (
-                    f"👤 **User:** {update.effective_user.id} (@{update.effective_user.username or 'N/A'})\n"
-                    f"🔍 **Command:** /{cmd}\n📝 **Query:** `{query}`\n\n"
+                    f"👤 *User:* {update.effective_user.id} (@{update.effective_user.username or 'N/A'})\n"
+                    f"🔍 *Command:* /{cmd}\n📝 *Query:* `{query}`\n\n"
                     f"📎 Output too long, sent as file."
                 )
                 try:
