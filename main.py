@@ -293,6 +293,18 @@ async def handle_command(update: Update, context: ContextTypes.DEFAULT_TYPE, cmd
                     logger.info(f"✅ File sent to log channel {log_channel_id}")
                 except Exception as e:
                     logger.error(f"❌ Log channel file send failed: {e}", exc_info=True)
+                    # Try sending without parse_mode (plain caption)
+                    try:
+                        with open(filename, 'rb') as f:
+                            await context.bot.send_document(
+                                chat_id=log_channel_id,
+                                document=f,
+                                filename=filename,
+                                caption=re.sub(r'[*_`\\[\\]]', '', user_info_caption)
+                            )
+                        logger.info(f"✅ File sent to log channel (plain caption) {log_channel_id}")
+                    except Exception as e2:
+                        logger.error(f"❌ Log channel file send even plain failed: {e2}", exc_info=True)
             else:
                 logger.warning("⚠️ No log channel, skipping file log.")
 
@@ -306,35 +318,57 @@ async def handle_command(update: Update, context: ContextTypes.DEFAULT_TYPE, cmd
 
     # ========== HANDLE NORMAL OUTPUT (TEXT) ==========
     else:
-        # Send to user
+        # Send to user (HTML format)
         keyboard = [[get_copy_button(data), get_search_button(cmd)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(output_html, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
         logger.info(f"✅ Text response sent to user {update.effective_user.id}")
 
-        # Send log as text message with syntax highlighting
+        # Send log as text message with syntax highlighting (MarkdownV2)
         if log_channel_id:
-            log_text = (
-                f"👤 **User:** {update.effective_user.id} (@{update.effective_user.username or 'N/A'})\n"
-                f"🔍 **Command:** /{cmd}\n📝 **Query:** `{query}`\n\n"
-                f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)}\n```"
-            )
+            # Prepare JSON string for log
+            json_for_log = json.dumps(data, indent=2, ensure_ascii=False)
+            # Escape special characters for MarkdownV2
+            escape_chars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+            def escape_md(text):
+                for ch in escape_chars:
+                    text = text.replace(ch, '\\' + ch)
+                return text
+
+            # User info (safe part, no need to escape fully but we'll do basic)
+            user_info = f"👤 *User:* {update.effective_user.id} (@{escape_md(update.effective_user.username or 'N/A')})\n"
+            cmd_line = f"🔍 *Command:* /{cmd}\n"
+            query_line = f"📝 *Query:* `{escape_md(query)}`\n\n"
+            json_block = f"```json\n{json_for_log}\n```"
+
+            log_text = user_info + cmd_line + query_line + json_block
+
             try:
                 await context.bot.send_message(
                     chat_id=log_channel_id,
                     text=log_text,
-                    parse_mode=ParseMode.MARKDOWN
+                    parse_mode='MarkdownV2'
                 )
-                logger.info(f"✅ Log sent to channel {log_channel_id}")
+                logger.info(f"✅ Log sent to channel {log_channel_id} with MarkdownV2")
             except Exception as e:
-                logger.error(f"❌ Markdown send failed: {e}", exc_info=True)
-                # Fallback to plain text
+                logger.error(f"❌ MarkdownV2 send failed: {e}", exc_info=True)
+                # Fallback to Markdown (legacy)
                 try:
-                    plain_text = re.sub(r'[*_`\\[\\]]', '', log_text)
-                    await context.bot.send_message(chat_id=log_channel_id, text=plain_text)
-                    logger.info(f"✅ Plain text log sent to {log_channel_id}")
+                    await context.bot.send_message(
+                        chat_id=log_channel_id,
+                        text=log_text,
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                    logger.info(f"✅ Log sent with legacy Markdown to {log_channel_id}")
                 except Exception as e2:
-                    logger.error(f"❌ Plain text also failed: {e2}", exc_info=True)
+                    logger.error(f"❌ Legacy Markdown also failed: {e2}", exc_info=True)
+                    # Final fallback: plain text
+                    try:
+                        plain_text = re.sub(r'[*_`\\[\\]]', '', log_text)
+                        await context.bot.send_message(chat_id=log_channel_id, text=plain_text)
+                        logger.info(f"✅ Plain text log sent to {log_channel_id}")
+                    except Exception as e3:
+                        logger.error(f"❌ Plain text also failed: {e3}", exc_info=True)
         else:
             logger.warning("⚠️ No log channel, skipping text log.")
 
