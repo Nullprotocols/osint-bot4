@@ -1,4 +1,4 @@
-# config.py - Configuration for OSINT Pro Bot with Render deployment support
+# config.py - Complete configuration for OSINT Pro Bot on Render
 # 🔐 Use environment variables for sensitive data (BOT_TOKEN, OWNER_ID, etc.)
 
 import os
@@ -25,7 +25,7 @@ INITIAL_ADMINS = [int(x.strip()) for x in INITIAL_ADMINS_STR.split(",") if x.str
 FORCE_JOIN_CHANNELS = [
     {"name": "All Data Here", "link": "https://t.me/all_data_here", "id": -1003090922367},
     {"name": "OSINT Lookup", "link": "https://t.me/osint_lookup", "id": -1003698567122},
-  {"name": "Legend Chats", "link": "https://t.me/legend_chats_osint", "id": -1003672015073}
+    {"name": "LEGEND CHATS", "link": "https://t.me/legend_chats_osint", "id": -1003672015073}
 ]
 
 # ==================== LOG CHANNELS (per command) ====================
@@ -64,9 +64,7 @@ COMMANDS = {
         "param": "10-digit number",
         "log": LOG_CHANNELS["num"],
         "desc": "Phone number basic lookup",
-        "extra_blacklist": [
-            "Ruk ja bhencho itne m kya unlimited request lega?? Paid lena h to bolo 100-400₹ @Simpleguy444"
-        ]
+        "extra_blacklist": []
     },
     "tg2num": {
         "url": "https://tg2num-owner-api.vercel.app/?userid={}",
