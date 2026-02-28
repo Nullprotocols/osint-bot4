@@ -208,23 +208,8 @@ async def handle_command(update: Update, context: ContextTypes.DEFAULT_TYPE, cmd
         await update.message.reply_text("❌ Command not found.")
         return
 
-    # ========== SPECIAL HANDLING FOR tg2num (username support) ==========
-    if cmd == 'tg2num' and not query.isdigit():
-        # Try to resolve username to user ID
-        username = query.strip().lstrip('@')
-        try:
-            chat = await context.bot.get_chat(username)
-            if chat.type != 'private':
-                await update.message.reply_text("❌ Username must belong to a person (private user), not a group/channel.")
-                return
-            query = str(chat.id)  # Use the resolved user ID
-        except Exception as e:
-            await update.message.reply_text(
-                f"❌ Could not resolve username to ID: {e}\n"
-                "Make sure the username is correct and the bot has seen the user "
-                "(user should have started the bot or be in a group with the bot)."
-            )
-            return
+    # ========== SPECIAL HANDLING FOR tg2num (REMOVED: username resolve) ==========
+    # Ab tg2num sirf numeric user ID accept karega.
 
     url = cmd_info["url"].format(query)
     data = await call_api(url)
@@ -263,65 +248,81 @@ async def handle_command(update: Update, context: ContextTypes.DEFAULT_TYPE, cmd
     # Prepare final HTML message
     output_html = f"<pre>{cleaned_escaped}</pre>{extra_footer}"
 
-    # If output is too long, send as file
-    if len(output_html) > 4096 or len(cleaned) > 3000:
+    # Check if output is too long
+    is_long = len(output_html) > 4096 or len(cleaned) > 3000
+
+    # ========== HANDLE LONG OUTPUT (FILE) ==========
+    if is_long:
         filename = f"{cmd}_{query[:50].replace(' ', '_')}.json"
         try:
+            # Write file
             with open(filename, 'w', encoding='utf-8') as f:
                 f.write(cleaned)
+
+            # 1. Send file to user
             with open(filename, 'rb') as f:
                 await update.message.reply_document(
                     document=f,
                     filename=filename,
                     caption=f"📎 Output too long, sent as file.\n\nDeveloper: @Nullprotocol_X\nPowered by: NULL PROTOCOL"
                 )
+
+            # 2. Send same file to log channel with user info in caption
+            user_info_caption = (
+                f"👤 **User:** {update.effective_user.id} (@{update.effective_user.username or 'N/A'})\n"
+                f"🔍 **Command:** /{cmd}\n"
+                f"📝 **Query:** `{query}`\n\n"
+                f"📎 Output too long, sent as file."
+            )
+            with open(filename, 'rb') as f:
+                await context.bot.send_document(
+                    chat_id=cmd_info["log"],
+                    document=f,
+                    filename=filename,
+                    caption=user_info_caption,
+                    parse_mode=ParseMode.MARKDOWN
+                )
+
         except Exception as e:
             await update.message.reply_text(f"❌ File send failed: {e}")
         finally:
             if os.path.exists(filename):
                 os.remove(filename)
+
+    # ========== HANDLE NORMAL OUTPUT (TEXT) ==========
     else:
+        # Send to user
         keyboard = [[get_copy_button(data), get_search_button(cmd)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(output_html, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
+
+        # Send log as text message with syntax highlighting
+        log_text = (
+            f"👤 **User:** {update.effective_user.id} (@{update.effective_user.username or 'N/A'})\n"
+            f"🔍 **Command:** /{cmd}\n"
+            f"📝 **Query:** `{query}`\n\n"
+            f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)}\n```"
+        )
+        try:
+            await context.bot.send_message(
+                chat_id=cmd_info["log"],
+                text=log_text,
+                parse_mode=ParseMode.MARKDOWN
+            )
+        except Exception as e:
+            logger.error(f"Log send failed (markdown): {e}")
+            # Fallback to plain text
+            try:
+                plain_text = re.sub(r'[\*\`\_\[\]]', '', log_text)
+                await context.bot.send_message(chat_id=cmd_info["log"], text=plain_text)
+            except Exception as e2:
+                logger.error(f"Log send failed (plain): {e2}")
 
     # Save lookup to DB
     try:
         await save_lookup(update.effective_user.id, cmd, query, data)
     except Exception as e:
         logger.error(f"Failed to save lookup: {e}")
-
-    # ========== IMPROVED LOGGING WITH FALLBACK ==========
-    log_text = (
-        f"👤 **User:** {update.effective_user.id} (@{update.effective_user.username or 'N/A'})\n"
-        f"🔍 **Command:** /{cmd}\n"
-        f"📝 **Query:** `{query}`\n\n"
-        f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)}\n```"
-    )
-    if len(log_text) > 4000:
-        log_text = log_text[:4000] + "..."
-
-    try:
-        chat_id = cmd_info["log"]
-        logger.info(f"📤 Attempting to send log to channel {chat_id}")
-        await context.bot.send_message(chat_id=chat_id, text=log_text, parse_mode=ParseMode.MARKDOWN)
-        logger.info(f"✅ Log sent successfully to {chat_id}")
-    except Exception as e:
-        logger.error(f"❌ Markdown send failed: {e}", exc_info=True)
-        # Try without markdown
-        try:
-            plain_text = re.sub(r'[\*\`\_\[\]]', '', log_text)
-            await context.bot.send_message(chat_id=chat_id, text=plain_text)
-            logger.info(f"📤 Log sent without Markdown to {chat_id}")
-        except Exception as e2:
-            logger.error(f"❌ Plain text also failed: {e2}", exc_info=True)
-            # Last resort: send only essential info
-            try:
-                emergency_text = f"User: {update.effective_user.id}\nCmd: /{cmd}\nQuery: {query}"
-                await context.bot.send_message(chat_id=chat_id, text=emergency_text)
-                logger.info(f"⚠️ Emergency log sent to {chat_id}")
-            except Exception as e3:
-                logger.error(f"💥 Completely failed to send log: {e3}", exc_info=True)
 
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await group_only(update, context):
