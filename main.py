@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# main.py - OSINT Pro Bot (Final logging format as per your images)
+# main.py - OSINT Pro Bot (Final: No username resolution, proper log channel)
 
 import os
 import sys
@@ -207,29 +207,15 @@ async def admin_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await update.message.reply_text(get_admin_commands_list(), parse_mode=ParseMode.MARKDOWN)
 
-# ==================== COMMAND HANDLER (with final logging format) ====================
+# ==================== COMMAND HANDLER (No username resolution) ====================
 async def handle_command(update: Update, context: ContextTypes.DEFAULT_TYPE, cmd: str, query: str):
     cmd_info = COMMANDS.get(cmd)
     if not cmd_info:
         await update.message.reply_text("❌ Command not found.")
         return
 
-    # ========== SPECIAL HANDLING FOR tg2num (username support) ==========
-    if cmd == 'tg2num' and not query.isdigit():
-        username = query.strip().lstrip('@')
-        try:
-            chat = await context.bot.get_chat(username)
-            if chat.type != 'private':
-                await update.message.reply_text("❌ Username must belong to a person (private user), not a group/channel.")
-                return
-            query = str(chat.id)
-        except Exception as e:
-            await update.message.reply_text(
-                f"❌ Could not resolve username to ID: {e}\n"
-                "Make sure the username is correct and the bot has seen the user."
-            )
-            return
-
+    # ========== NO USERNAME RESOLUTION FOR ANY COMMAND ==========
+    # We simply use the query as provided by the user.
     url = cmd_info["url"].format(query)
     data = await call_api(url)
 
