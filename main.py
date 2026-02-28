@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# main.py - OSINT Pro Bot (Fixed logging for file output & JSON coloring)
+# main.py - OSINT Pro Bot (Final logging format as per your images)
 
 import os
 import sys
@@ -98,6 +98,12 @@ def get_copy_button(data):
 
 def get_search_button(cmd):
     return InlineKeyboardButton("🔍 Search", callback_data=f"search:{cmd}")
+
+def format_log_date(dt=None):
+    """Return date in DD-MM-YYYY HH:MM format"""
+    if dt is None:
+        dt = datetime.now()
+    return dt.strftime("%d-%m-%Y %H:%M")
 
 # ==================== COMMAND LIST GENERATORS ====================
 def get_commands_list():
@@ -201,7 +207,7 @@ async def admin_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await update.message.reply_text(get_admin_commands_list(), parse_mode=ParseMode.MARKDOWN)
 
-# ==================== COMMAND HANDLER (with fixes) ====================
+# ==================== COMMAND HANDLER (with final logging format) ====================
 async def handle_command(update: Update, context: ContextTypes.DEFAULT_TYPE, cmd: str, query: str):
     cmd_info = COMMANDS.get(cmd)
     if not cmd_info:
@@ -261,8 +267,19 @@ async def handle_command(update: Update, context: ContextTypes.DEFAULT_TYPE, cmd
     # Prepare final HTML message for user
     output_html = f"<pre>{cleaned_escaped}</pre>{extra_footer}"
 
-    # If output is too long, send as file
-    if len(output_html) > 4096 or len(cleaned) > 3000:
+    # Variables for logging
+    log_chat_id = cmd_info["log"]
+    user_id = update.effective_user.id
+    username = update.effective_user.username or 'N/A'
+    log_date = format_log_date()
+    json_size = len(cleaned)  # characters
+
+    # ========== SEND RESPONSE TO USER ==========
+    file_sent = False
+    filename = None
+
+    if len(output_html) > 4096 or json_size > 3000:
+        # Long output: send as file to user
         filename = f"{cmd}_{query[:50].replace(' ', '_')}.json"
         try:
             with open(filename, 'w', encoding='utf-8') as f:
@@ -273,66 +290,82 @@ async def handle_command(update: Update, context: ContextTypes.DEFAULT_TYPE, cmd
                     filename=filename,
                     caption=f"📎 Output too long, sent as file.\n\nDeveloper: @Nullprotocol_X\nPowered by: NULL PROTOCOL"
                 )
+            file_sent = True
         except Exception as e:
             await update.message.reply_text(f"❌ File send failed: {e}")
+            file_sent = False
         finally:
-            if os.path.exists(filename):
-                os.remove(filename)
+            # Don't remove yet, we need it for log channel
+            pass
     else:
+        # Normal output: send as text
         keyboard = [[get_copy_button(data), get_search_button(cmd)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(output_html, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
 
     # Save lookup to DB
     try:
-        await save_lookup(update.effective_user.id, cmd, query, data)
+        await save_lookup(user_id, cmd, query, data)
     except Exception as e:
         logger.error(f"Failed to save lookup: {e}")
 
-    # ========== FIXED LOGGING SECTION - HAR BAAR CHALEGA ==========
+    # ========== SEND LOG TO CHANNEL ==========
     try:
-        chat_id = cmd_info["log"]
-        
-        # Log message with user info and colored JSON
-        log_message = (
-            f"👤 **User:** {update.effective_user.id} (@{update.effective_user.username or 'N/A'})\n"
-            f"🔍 **Command:** /{cmd}\n"
-            f"📝 **Query:** `{query}`\n\n"
-            f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)}\n```"
-        )
-        
-        # Agar message 4000 se zyada ho to truncate karo
-        if len(log_message) > 4000:
-            log_message = log_message[:4000] + "\n\n... (truncated)"
-        
-        logger.info(f"📤 Attempting to send log to channel {chat_id}")
-        
-        # Try with Markdown (JSON coloring ke saath)
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=log_message,
-            parse_mode=ParseMode.MARKDOWN
-        )
-        logger.info(f"✅ Log sent successfully to {chat_id}")
-        
-    except Exception as e:
-        logger.error(f"❌ Log send failed: {e}", exc_info=True)
-        
-        # Fallback 1: Bina markdown ke try karo
-        try:
-            plain_text = re.sub(r'[\*\`\_\[\]]', '', log_message)
-            await context.bot.send_message(chat_id=chat_id, text=plain_text)
-            logger.info(f"📤 Log sent without markdown to {chat_id}")
-        except Exception as e2:
-            logger.error(f"❌ Plain text also failed: {e2}")
+        if file_sent and filename and os.path.exists(filename):
+            # Send file to log channel with caption
+            caption = (
+                f"Lookup Log - {cmd.upper()}\n\n"
+                f"User: {user_id} (@{username})\n"
+                f"Type: {cmd}\n"
+                f"Input: {query}\n"
+                f"Date: {log_date}\n"
+                f"Size: {json_size} characters\n"
+                f"Format: JSON File"
+            )
+            with open(filename, 'rb') as f:
+                await context.bot.send_document(
+                    chat_id=log_chat_id,
+                    document=f,
+                    filename=filename,
+                    caption=caption
+                )
+            logger.info(f"✅ Log file sent to channel {log_chat_id}")
+        else:
+            # Send text message with JSON code block
+            log_message = (
+                f"Lookup Log - {cmd.upper()}\n\n"
+                f"User: {user_id} (@{username})\n"
+                f"Type: {cmd}\n"
+                f"Input: {query}\n"
+                f"Date: {log_date}\n"
+                f"Size: {json_size} characters\n\n"
+                f"Result:\n\n"
+                f"```json\n{cleaned}\n```"
+            )
+            # Truncate if too long
+            if len(log_message) > 4000:
+                log_message = log_message[:4000] + "\n\n... (truncated)"
             
-            # Fallback 2: Sirf basic info bhejo
-            try:
-                emergency_text = f"User: {update.effective_user.id}\nCmd: /{cmd}\nQuery: {query}"
-                await context.bot.send_message(chat_id=chat_id, text=emergency_text)
-                logger.info(f"⚠️ Emergency log sent to {chat_id}")
-            except Exception as e3:
-                logger.error(f"💥 Completely failed: {e3}")
+            await context.bot.send_message(
+                chat_id=log_chat_id,
+                text=log_message,
+                parse_mode=ParseMode.MARKDOWN
+            )
+            logger.info(f"✅ Log text sent to channel {log_chat_id}")
+
+    except Exception as e:
+        logger.error(f"❌ Failed to send log to channel {log_chat_id}: {e}", exc_info=True)
+        # Fallback: try without markdown
+        try:
+            plain_msg = re.sub(r'[\*\`\_\[\]]', '', log_message if not file_sent else caption)
+            await context.bot.send_message(chat_id=log_chat_id, text=plain_msg)
+        except:
+            pass
+
+    finally:
+        # Clean up file if it was created
+        if filename and os.path.exists(filename):
+            os.remove(filename)
 
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await group_only(update, context):
