@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# main.py - OSINT Pro Bot with all features (fixed file send, tg2num, logging)
+# main.py - OSINT Pro Bot (Fixed logging for file output & JSON coloring)
 
 import os
 import sys
@@ -201,7 +201,7 @@ async def admin_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await update.message.reply_text(get_admin_commands_list(), parse_mode=ParseMode.MARKDOWN)
 
-# ==================== COMMAND HANDLER (with branding, log, long output as file) ====================
+# ==================== COMMAND HANDLER (with fixes) ====================
 async def handle_command(update: Update, context: ContextTypes.DEFAULT_TYPE, cmd: str, query: str):
     cmd_info = COMMANDS.get(cmd)
     if not cmd_info:
@@ -210,19 +210,17 @@ async def handle_command(update: Update, context: ContextTypes.DEFAULT_TYPE, cmd
 
     # ========== SPECIAL HANDLING FOR tg2num (username support) ==========
     if cmd == 'tg2num' and not query.isdigit():
-        # Try to resolve username to user ID
         username = query.strip().lstrip('@')
         try:
             chat = await context.bot.get_chat(username)
             if chat.type != 'private':
                 await update.message.reply_text("❌ Username must belong to a person (private user), not a group/channel.")
                 return
-            query = str(chat.id)  # Use the resolved user ID
+            query = str(chat.id)
         except Exception as e:
             await update.message.reply_text(
                 f"❌ Could not resolve username to ID: {e}\n"
-                "Make sure the username is correct and the bot has seen the user "
-                "(user should have started the bot or be in a group with the bot)."
+                "Make sure the username is correct and the bot has seen the user."
             )
             return
 
@@ -236,7 +234,7 @@ async def handle_command(update: Update, context: ContextTypes.DEFAULT_TYPE, cmd
             if key in data:
                 del data[key]
 
-    # Add branding to the JSON data
+    # Add branding
     if isinstance(data, dict):
         data["developer"] = BRANDING["developer"]
         data["powered_by"] = BRANDING["powered_by"]
@@ -260,7 +258,7 @@ async def handle_command(update: Update, context: ContextTypes.DEFAULT_TYPE, cmd
 
     extra_footer = "\n\n━━━━━━━━━━━━━━━━━━━━\n👨‍💻 **Developer:** @Nullprotocol_X\n⚡ **Powered by:** NULL PROTOCOL"
 
-    # Prepare final HTML message
+    # Prepare final HTML message for user
     output_html = f"<pre>{cleaned_escaped}</pre>{extra_footer}"
 
     # If output is too long, send as file
@@ -291,37 +289,50 @@ async def handle_command(update: Update, context: ContextTypes.DEFAULT_TYPE, cmd
     except Exception as e:
         logger.error(f"Failed to save lookup: {e}")
 
-    # ========== IMPROVED LOGGING WITH FALLBACK ==========
-    log_text = (
-        f"👤 **User:** {update.effective_user.id} (@{update.effective_user.username or 'N/A'})\n"
-        f"🔍 **Command:** /{cmd}\n"
-        f"📝 **Query:** `{query}`\n\n"
-        f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)}\n```"
-    )
-    if len(log_text) > 4000:
-        log_text = log_text[:4000] + "..."
-
+    # ========== FIXED LOGGING SECTION - HAR BAAR CHALEGA ==========
     try:
         chat_id = cmd_info["log"]
+        
+        # Log message with user info and colored JSON
+        log_message = (
+            f"👤 **User:** {update.effective_user.id} (@{update.effective_user.username or 'N/A'})\n"
+            f"🔍 **Command:** /{cmd}\n"
+            f"📝 **Query:** `{query}`\n\n"
+            f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)}\n```"
+        )
+        
+        # Agar message 4000 se zyada ho to truncate karo
+        if len(log_message) > 4000:
+            log_message = log_message[:4000] + "\n\n... (truncated)"
+        
         logger.info(f"📤 Attempting to send log to channel {chat_id}")
-        await context.bot.send_message(chat_id=chat_id, text=log_text, parse_mode=ParseMode.MARKDOWN)
+        
+        # Try with Markdown (JSON coloring ke saath)
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=log_message,
+            parse_mode=ParseMode.MARKDOWN
+        )
         logger.info(f"✅ Log sent successfully to {chat_id}")
+        
     except Exception as e:
-        logger.error(f"❌ Markdown send failed: {e}", exc_info=True)
-        # Try without markdown
+        logger.error(f"❌ Log send failed: {e}", exc_info=True)
+        
+        # Fallback 1: Bina markdown ke try karo
         try:
-            plain_text = re.sub(r'[\*\`\_\[\]]', '', log_text)
+            plain_text = re.sub(r'[\*\`\_\[\]]', '', log_message)
             await context.bot.send_message(chat_id=chat_id, text=plain_text)
-            logger.info(f"📤 Log sent without Markdown to {chat_id}")
+            logger.info(f"📤 Log sent without markdown to {chat_id}")
         except Exception as e2:
-            logger.error(f"❌ Plain text also failed: {e2}", exc_info=True)
-            # Last resort: send only essential info
+            logger.error(f"❌ Plain text also failed: {e2}")
+            
+            # Fallback 2: Sirf basic info bhejo
             try:
                 emergency_text = f"User: {update.effective_user.id}\nCmd: /{cmd}\nQuery: {query}"
                 await context.bot.send_message(chat_id=chat_id, text=emergency_text)
                 logger.info(f"⚠️ Emergency log sent to {chat_id}")
             except Exception as e3:
-                logger.error(f"💥 Completely failed to send log: {e3}", exc_info=True)
+                logger.error(f"💥 Completely failed: {e3}")
 
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await group_only(update, context):
@@ -382,7 +393,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cmd = data.split(":", 1)[1]
         await query.message.reply_text(f"Send `/{cmd}` with your query.", parse_mode=ParseMode.MARKDOWN)
 
-# ==================== CONVERSATION HANDLERS FOR BROADCAST/DM/BULKDM ====================
+# ==================== CONVERSATION HANDLERS ====================
 async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if user.id != OWNER_ID and not await is_admin(user.id):
