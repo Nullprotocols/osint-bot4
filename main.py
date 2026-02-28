@@ -212,14 +212,14 @@ async def handle_command(update: Update, context: ContextTypes.DEFAULT_TYPE, cmd
     # Ab tg2num sirf numeric user ID accept karega.
 
     url = cmd_info["url"].format(query)
+    logger.info(f"🔗 API Call: {url}")
     data = await call_api(url)
 
     # ========== REMOVE UNWANTED FIELDS FOR tg2num ==========
     if cmd == 'tg2num' and isinstance(data, dict):
         keys_to_remove = ["credit", "channel", "validity"]
         for key in keys_to_remove:
-            if key in data:
-                del data[key]
+            data.pop(key, None)
 
     # Add branding to the JSON data
     if isinstance(data, dict):
@@ -250,14 +250,20 @@ async def handle_command(update: Update, context: ContextTypes.DEFAULT_TYPE, cmd
 
     # Check if output is too long
     is_long = len(output_html) > 4096 or len(cleaned) > 3000
+    log_channel_id = cmd_info.get("log")
+
+    if log_channel_id:
+        logger.info(f"📢 Log channel for /{cmd}: {log_channel_id}")
+    else:
+        logger.error(f"❌ No log channel configured for /{cmd}")
 
     # ========== HANDLE LONG OUTPUT (FILE) ==========
     if is_long:
         filename = f"{cmd}_{query[:50].replace(' ', '_')}.json"
         try:
-            # Write file
             with open(filename, 'w', encoding='utf-8') as f:
                 f.write(cleaned)
+            logger.info(f"✅ File created: {filename}")
 
             # 1. Send file to user
             with open(filename, 'rb') as f:
@@ -266,28 +272,37 @@ async def handle_command(update: Update, context: ContextTypes.DEFAULT_TYPE, cmd
                     filename=filename,
                     caption=f"📎 Output too long, sent as file.\n\nDeveloper: @Nullprotocol_X\nPowered by: NULL PROTOCOL"
                 )
+            logger.info(f"✅ File sent to user {update.effective_user.id}")
 
             # 2. Send same file to log channel with user info in caption
-            user_info_caption = (
-                f"👤 **User:** {update.effective_user.id} (@{update.effective_user.username or 'N/A'})\n"
-                f"🔍 **Command:** /{cmd}\n"
-                f"📝 **Query:** `{query}`\n\n"
-                f"📎 Output too long, sent as file."
-            )
-            with open(filename, 'rb') as f:
-                await context.bot.send_document(
-                    chat_id=cmd_info["log"],
-                    document=f,
-                    filename=filename,
-                    caption=user_info_caption,
-                    parse_mode=ParseMode.MARKDOWN
+            if log_channel_id:
+                user_info_caption = (
+                    f"👤 **User:** {update.effective_user.id} (@{update.effective_user.username or 'N/A'})\n"
+                    f"🔍 **Command:** /{cmd}\n📝 **Query:** `{query}`\n\n"
+                    f"📎 Output too long, sent as file."
                 )
+                try:
+                    with open(filename, 'rb') as f:
+                        await context.bot.send_document(
+                            chat_id=log_channel_id,
+                            document=f,
+                            filename=filename,
+                            caption=user_info_caption,
+                            parse_mode=ParseMode.MARKDOWN
+                        )
+                    logger.info(f"✅ File sent to log channel {log_channel_id}")
+                except Exception as e:
+                    logger.error(f"❌ Log channel file send failed: {e}", exc_info=True)
+            else:
+                logger.warning("⚠️ No log channel, skipping file log.")
 
         except Exception as e:
+            logger.error(f"❌ File handling error: {e}", exc_info=True)
             await update.message.reply_text(f"❌ File send failed: {e}")
         finally:
             if os.path.exists(filename):
                 os.remove(filename)
+                logger.info(f"🗑️ File {filename} removed")
 
     # ========== HANDLE NORMAL OUTPUT (TEXT) ==========
     else:
@@ -295,34 +310,40 @@ async def handle_command(update: Update, context: ContextTypes.DEFAULT_TYPE, cmd
         keyboard = [[get_copy_button(data), get_search_button(cmd)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(output_html, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
+        logger.info(f"✅ Text response sent to user {update.effective_user.id}")
 
         # Send log as text message with syntax highlighting
-        log_text = (
-            f"👤 **User:** {update.effective_user.id} (@{update.effective_user.username or 'N/A'})\n"
-            f"🔍 **Command:** /{cmd}\n"
-            f"📝 **Query:** `{query}`\n\n"
-            f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)}\n```"
-        )
-        try:
-            await context.bot.send_message(
-                chat_id=cmd_info["log"],
-                text=log_text,
-                parse_mode=ParseMode.MARKDOWN
+        if log_channel_id:
+            log_text = (
+                f"👤 **User:** {update.effective_user.id} (@{update.effective_user.username or 'N/A'})\n"
+                f"🔍 **Command:** /{cmd}\n📝 **Query:** `{query}`\n\n"
+                f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)}\n```"
             )
-        except Exception as e:
-            logger.error(f"Log send failed (markdown): {e}")
-            # Fallback to plain text
             try:
-                plain_text = re.sub(r'[\*\`\_\[\]]', '', log_text)
-                await context.bot.send_message(chat_id=cmd_info["log"], text=plain_text)
-            except Exception as e2:
-                logger.error(f"Log send failed (plain): {e2}")
+                await context.bot.send_message(
+                    chat_id=log_channel_id,
+                    text=log_text,
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                logger.info(f"✅ Log sent to channel {log_channel_id}")
+            except Exception as e:
+                logger.error(f"❌ Markdown send failed: {e}", exc_info=True)
+                # Fallback to plain text
+                try:
+                    plain_text = re.sub(r'[*_`\\[\\]]', '', log_text)
+                    await context.bot.send_message(chat_id=log_channel_id, text=plain_text)
+                    logger.info(f"✅ Plain text log sent to {log_channel_id}")
+                except Exception as e2:
+                    logger.error(f"❌ Plain text also failed: {e2}", exc_info=True)
+        else:
+            logger.warning("⚠️ No log channel, skipping text log.")
 
     # Save lookup to DB
     try:
         await save_lookup(update.effective_user.id, cmd, query, data)
+        logger.info(f"✅ Lookup saved for user {update.effective_user.id}")
     except Exception as e:
-        logger.error(f"Failed to save lookup: {e}")
+        logger.error(f"❌ Failed to save lookup: {e}", exc_info=True)
 
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await group_only(update, context):
