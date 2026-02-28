@@ -243,9 +243,10 @@ async def handle_command(update: Update, context: ContextTypes.DEFAULT_TYPE, cmd
     cleaned = clean_branding(json_str, cmd_info.get("extra_blacklist", []))
     cleaned_escaped = html.escape(cleaned)
 
-    extra_footer = "\n\n━━━━━━━━━━━━━━━━━━━━\n👨‍💻 **Developer:** @Nullprotocol_X\n⚡ **Powered by:** NULL PROTOCOL"
+    # Footer with HTML bold tags
+    extra_footer = "\n\n━━━━━━━━━━━━━━━━━━━━\n👨‍💻 <b>Developer:</b> @Nullprotocol_X\n⚡ <b>Powered by:</b> NULL PROTOCOL"
 
-    # Prepare final HTML message
+    # Prepare final HTML message for user
     output_html = f"<pre>{cleaned_escaped}</pre>{extra_footer}"
 
     # Check if output is too long
@@ -274,11 +275,12 @@ async def handle_command(update: Update, context: ContextTypes.DEFAULT_TYPE, cmd
                 )
             logger.info(f"✅ File sent to user {update.effective_user.id}")
 
-            # 2. Send same file to log channel with user info in caption
+            # 2. Send same file to log channel with user info in caption (using HTML for bold)
             if log_channel_id:
                 user_info_caption = (
-                    f"👤 **User:** {update.effective_user.id} (@{update.effective_user.username or 'N/A'})\n"
-                    f"🔍 **Command:** /{cmd}\n📝 **Query:** `{query}`\n\n"
+                    f"👤 <b>User:</b> {update.effective_user.id} (@{update.effective_user.username or 'N/A'})\n"
+                    f"🔍 <b>Command:</b> /{cmd}\n"
+                    f"📝 <b>Query:</b> <code>{query}</code>\n\n"
                     f"📎 Output too long, sent as file."
                 )
                 try:
@@ -288,11 +290,11 @@ async def handle_command(update: Update, context: ContextTypes.DEFAULT_TYPE, cmd
                             document=f,
                             filename=filename,
                             caption=user_info_caption,
-                            parse_mode=ParseMode.MARKDOWN
+                            parse_mode=ParseMode.HTML  # HTML for bold
                         )
-                    logger.info(f"✅ File sent to log channel {log_channel_id}")
+                    logger.info(f"✅ File sent to log channel {log_channel_id} with HTML")
                 except Exception as e:
-                    logger.error(f"❌ Log channel file send failed: {e}", exc_info=True)
+                    logger.error(f"❌ Log channel file send failed (HTML): {e}", exc_info=True)
                     # Try sending without parse_mode (plain caption)
                     try:
                         with open(filename, 'rb') as f:
@@ -300,7 +302,7 @@ async def handle_command(update: Update, context: ContextTypes.DEFAULT_TYPE, cmd
                                 chat_id=log_channel_id,
                                 document=f,
                                 filename=filename,
-                                caption=re.sub(r'[*_`\\[\\]]', '', user_info_caption)
+                                caption=re.sub(r'<[^>]+>', '', user_info_caption)  # strip HTML tags
                             )
                         logger.info(f"✅ File sent to log channel (plain caption) {log_channel_id}")
                     except Exception as e2:
