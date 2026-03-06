@@ -60,14 +60,11 @@ GLOBAL_BLACKLIST = [
 # Har command ka URL, parameter description, log channel ID, description, extra blacklist
 COMMANDS = {
     "num": {
-        "url": "https://zionix.xo.je/znnum?number={}",
+        "url": "https://openosintx.vippanel.in/tginfo.php?key=b6b9f88d0cc19a15be5c957110e9d8ce&number={}",
         "param": "10-digit number",
         "log": LOG_CHANNELS["num"],
         "desc": "Phone number basic lookup",
-        "extra_blacklist": [
-            "API POWERED BY @FRAPPEASH",
-            "_powered_by"
-        ]
+        "extra_blacklist": []
     },
     "tg2num": {
         "url": "https://tg2num-owner-api.vercel.app/?userid={}",
