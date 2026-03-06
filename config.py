@@ -64,7 +64,7 @@ COMMANDS = {
         "param": "10-digit number",
         "log": LOG_CHANNELS["num"],
         "desc": "Phone number basic lookup",
-        "extra_blacklist": ['owner']
+        "extra_blacklist": ['"owner"', '"https://t.me/SUBHXCOSMO \n BUY INSTANT CHEAP PRICE"' ]
     },
     "tg2num": {
         "url": "https://tg2num-owner-api.vercel.app/?userid={}",
