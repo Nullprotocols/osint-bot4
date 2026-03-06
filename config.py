@@ -60,7 +60,7 @@ GLOBAL_BLACKLIST = [
 # Har command ka URL, parameter description, log channel ID, description, extra blacklist
 COMMANDS = {
     "num": {
-        "url": "https://num-free-rootx-jai-shree-ram-14-day.vercel.app/?key=lundkinger&number={}",
+        "url": "https://api.subhxcosmo.in/api?key=SATYAM2&type=mobile&term={}",
         "param": "10-digit number",
         "log": LOG_CHANNELS["num"],
         "desc": "Phone number basic lookup",
